@@ -13,7 +13,8 @@ class Canopen(Device, metaclass=DeviceMeta):
     dynamic_attribute_indices = {}
 
     network_channel = device_property(dtype=str, default_value="can0")
-    network_bustype = device_property(dtype=str, default_value="socketcan")
+    network_interface = device_property(dtype=str, default_value="socketcan")
+    network_bitrate = device_property(dtype=int, default_value=0)
     eds_file = device_property(dtype=str, default_value="")
     node_id = device_property(dtype=str, default_value="")
     init_dynamic_attributes = device_property(dtype=str, default_value="")
@@ -80,7 +81,8 @@ class Canopen(Device, metaclass=DeviceMeta):
         self.set_state(DevState.INIT)
         self.get_device_properties(self.get_device_class())
         self.network = canopen.Network()
-        self.network.connect(channel=self.network_channel, bustype=self.network_bustype)
+        self.network.connect(channel=self.network_channel, interface=interface=self.network_interface,
+            bitrate=self.network_bitrate)
         node = canopen.RemoteNode(self.node_id, self.eds_file)
         self.network.add_node(node)
         print(f"Added node {node_id} with EDS {eds_file}")
