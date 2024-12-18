@@ -81,7 +81,7 @@ class Canopen(Device, metaclass=DeviceMeta):
         self.set_state(DevState.INIT)
         self.get_device_properties(self.get_device_class())
         self.network = canopen.Network()
-        self.network.connect(channel=self.network_channel, interface=interface=self.network_interface,
+        self.network.connect(channel=self.network_channel, interface=self.network_interface,
             bitrate=self.network_bitrate)
         node = canopen.RemoteNode(self.node_id, self.eds_file)
         self.network.add_node(node)
