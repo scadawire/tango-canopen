@@ -78,7 +78,7 @@ class Canopen(Device, metaclass=DeviceMeta):
         self.sdo(name).raw = value
         self.debug_stream(f"Write value {name}: {value}")
 
-    def sdo(self, index):
+    def sdo(self, name):
         indexName = self.dynamic_attribute_indices[name]
         if indexName.startswith("0x"): # hex index sdo
             if "#" in indexName:
