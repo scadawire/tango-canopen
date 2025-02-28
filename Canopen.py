@@ -68,15 +68,33 @@ class Canopen(Device, metaclass=DeviceMeta):
 
     def read_dynamic_attr(self, attr):
         name = attr.get_name()
-        value = self.node.sdo[int(self.dynamic_attribute_indices[name], 16)].raw
+        value = self.sdo(name).raw
         self.debug_stream(f"Read value {name}: {value}")
         attr.set_value(value)
 
     def write_dynamic_attr(self, attr):
         name = attr.get_name()
         value = attr.get_write_value()        
-        self.node.sdo[int(self.dynamic_attribute_indices[name], 16)].raw = value
+        self.sdo(name).raw = value
         self.debug_stream(f"Write value {name}: {value}")
+
+    def sdo(self, index):
+        index = self.sdo_index(name)
+        return node.sdo[index]
+
+    def sdo(self, index):
+        indexName = self.dynamic_attribute_indices[name]
+        if indexName.startswith("0x"): # hex index sdo
+            if "#" in indexName:
+                mainIndex, subIndex = my_string.split("#")
+                mainIndexHex = int(mainIndex, 16)
+                subIndexHex = int(subIndex, 16)
+                return node.sdo[mainIndex][subIndexHex]
+            else:
+                return node.sdo[int(indexName, 16)]
+        if indexName.isdigit():  # integer index sdo
+            return node.sdo[int(indexName)]
+        return node.sdo[indexName] # named sdo
 
     def init_device(self):
         self.set_state(DevState.INIT)
@@ -92,6 +110,11 @@ class Canopen(Device, metaclass=DeviceMeta):
         self.node = canopen.RemoteNode(int(self.node_id), temp_eds_file.name)
         # self.node = canopen.RemoteNode(self.node_id, self.eds_file) not allowed to load directly
         self.network.add_node(self.node)
+
+        for entry in node.object_dictionary:
+            obj = node.object_dictionary[entry]
+            print(f"Object Index: {entry}, Name: {obj.name}")
+
         os.remove(temp_eds_file.name)
         if self.init_dynamic_attributes:
             try:
