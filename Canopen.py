@@ -85,12 +85,12 @@ class Canopen(Device, metaclass=DeviceMeta):
                 mainIndex, subIndex = indexName.split("#")
                 mainIndexHex = int(mainIndex, 16)
                 subIndexHex = int(subIndex, 16)
-                return node.sdo[mainIndex][subIndexHex]
+                return self.node.sdo[mainIndex][subIndexHex]
             else:
-                return node.sdo[int(indexName, 16)]
+                return self.node.sdo[int(indexName, 16)]
         if indexName.isdigit():  # integer index sdo
-            return node.sdo[int(indexName)]
-        return node.sdo[indexName] # named sdo
+            return self.node.sdo[int(indexName)]
+        return self.node.sdo[indexName] # named sdo
 
     def init_device(self):
         self.set_state(DevState.INIT)
