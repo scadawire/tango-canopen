@@ -82,7 +82,7 @@ class Canopen(Device, metaclass=DeviceMeta):
         indexName = self.dynamic_attribute_indices[name]
         if indexName.startswith("0x"): # hex index sdo
             if "#" in indexName:
-                mainIndex, subIndex = my_string.split("#")
+                mainIndex, subIndex = indexName.split("#")
                 mainIndexHex = int(mainIndex, 16)
                 subIndexHex = int(subIndex, 16)
                 return node.sdo[mainIndex][subIndexHex]
