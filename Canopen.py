@@ -110,9 +110,8 @@ class Canopen(Device, metaclass=DeviceMeta):
         self.node = canopen.RemoteNode(int(self.node_id), temp_eds_file.name)
         # self.node = canopen.RemoteNode(self.node_id, self.eds_file) not allowed to load directly
         self.network.add_node(self.node)
-
-        for entry in node.object_dictionary:
-            obj = node.object_dictionary[entry]
+        for entry in self.node.object_dictionary:
+            obj = self.node.object_dictionary[entry]
             print(f"Object Index: {entry}, Name: {obj.name}")
 
         os.remove(temp_eds_file.name)
