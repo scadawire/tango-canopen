@@ -84,12 +84,12 @@ class Canopen(Device, metaclass=DeviceMeta):
         self.network = canopen.Network()
         self.network.connect(channel=self.network_channel, interface=self.network_interface,
             bitrate=self.network_bitrate)
-        print(f"Adding node {self.node_id} with EDS {self.eds_file}")
+        self.info_stream(f"Adding node {self.node_id} with EDS {self.eds_file}")
         temp_eds_file = tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.eds')
         temp_eds_file.write(self.eds_file)
         temp_eds_file.close()
-        print(f"EDS content written to temporary file: {temp_eds_file.name}")
-        node = canopen.RemoteNode(self.node_id, temp_eds_file.name)
+        self.info_stream(f"EDS content written to temporary file: {temp_eds_file.name}")
+        node = canopen.RemoteNode(int(self.node_id), temp_eds_file.name)
         # node = canopen.RemoteNode(self.node_id, self.eds_file) not allowed to load directly
         self.network.add_node(node)
         os.remove(temp_eds_file.name)
