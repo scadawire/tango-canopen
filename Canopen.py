@@ -47,7 +47,7 @@ class Canopen(Device, metaclass=DeviceMeta):
         attr.set_default_properties(prop)
         self.add_attribute(attr, r_meth=self.read_dynamic_attr, w_meth=self.write_dynamic_attr)
         self.dynamic_attribute_indices[name] = index
-        print(f"Added dynamic attribute {object_index} {name}")
+        print(f"Added dynamic attribute {index} {name}")
 
     def stringValueToVarType(self, variable_type_name) -> CmdArgType:
         return {
