@@ -17,7 +17,7 @@ class Canopen(Device, metaclass=DeviceMeta):
     network_interface = device_property(dtype=str, default_value="socketcan")
     network_bitrate = device_property(dtype=int, default_value=0)
     eds_file = device_property(dtype=str, default_value="")
-    node_id = device_property(dtype=str, default_value="")
+    node_id = device_property(dtype=int, default_value=1)
     init_dynamic_attributes = device_property(dtype=str, default_value="")
 
     @attribute
