@@ -84,12 +84,14 @@ class Canopen(Device, metaclass=DeviceMeta):
         self.network = canopen.Network()
         self.network.connect(channel=self.network_channel, interface=self.network_interface,
             bitrate=self.network_bitrate)
-        temp_eds_file = tempfile.NamedTemporaryFile(delete=False, mode='w')
-        temp_eds_file.write(self.eds_file)
-        temp_eds_file.close()
-        node = canopen.RemoteNode(self.node_id, temp_eds_file.name)
+        #temp_eds_file = tempfile.NamedTemporaryFile(delete=False, mode='w')
+        #temp_eds_file.write(self.eds_file)
+        #temp_eds_file.close()
+        #node = canopen.RemoteNode(self.node_id, temp_eds_file.name)
+        #print(f"Adding node {node_id} with EDS {self.eds_file} loaded from {temp_eds_file.name}")
+        node = canopen.RemoteNode(self.node_id, self.eds_file)
+        print(f"Adding node {node_id} with EDS {self.eds_file}")
         self.network.add_node(node)
-        print(f"Added node {node_id} with EDS {eds_file} loaded from {temp_eds_file.name}")
         os.remove(temp_eds_file.name)
         if self.init_dynamic_attributes:
             try:
