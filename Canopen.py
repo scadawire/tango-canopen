@@ -47,7 +47,7 @@ class Canopen(Device, metaclass=DeviceMeta):
         attr.set_default_properties(prop)
         self.add_attribute(attr, r_meth=self.read_dynamic_attr, w_meth=self.write_dynamic_attr)
         self.dynamic_attribute_indices[name] = index
-        print(f"Added dynamic attribute {index} {name}")
+        self.info_stream(f"Added dynamic attribute {index} {name}")
 
     def stringValueToVarType(self, variable_type_name) -> CmdArgType:
         return {
@@ -108,7 +108,7 @@ class Canopen(Device, metaclass=DeviceMeta):
         self.network.add_node(self.node)
         for entry in self.node.object_dictionary:
             obj = self.node.object_dictionary[entry]
-            print(f"Object Index: {entry}, Name: {obj.name}")
+            self.info_stream(f"Object Index: {entry}, Name: {obj.name}")
 
         os.remove(temp_eds_file.name)
         if self.init_dynamic_attributes:
