@@ -85,19 +85,32 @@ class Canopen(Device, metaclass=DeviceMeta):
                 mainIndex, subIndex = indexName.split("#")
                 mainIndexHex = int(mainIndex, 16)
                 subIndexHex = int(subIndex, 16)
-                return self.node.sdo[mainIndex][subIndexHex]
+                return self.node.sdo[mainIndexHex][subIndexHex]
             else:
                 return self.node.sdo[int(indexName, 16)]
         if indexName.isdigit():  # integer index sdo
             return self.node.sdo[int(indexName)]
         return self.node.sdo[indexName] # named sdo
 
+    def delete_device(self):
+        if self.network is not None:
+            try:
+                self.network.disconnect()
+            except Exception:
+                pass
+            self.network = None
+        self.node = None
+
     def init_device(self):
         self.set_state(DevState.INIT)
         self.get_device_properties(self.get_device_class())
         self.network = canopen.Network()
-        self.network.connect(channel=self.network_channel, interface=self.network_interface,
-            bitrate=self.network_bitrate)
+        try:
+            self.network.connect(channel=self.network_channel, interface=self.network_interface,
+                bitrate=self.network_bitrate)
+        except Exception as e:
+            self.error_stream("Failed to connect: " + str(e))
+            self.set_state(DevState.FAULT)
         self.info_stream(f"Adding node {self.node_id} with EDS {self.eds_file}")
         temp_eds_file = tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.eds')
         temp_eds_file.write(self.eds_file)
@@ -121,9 +134,10 @@ class Canopen(Device, metaclass=DeviceMeta):
                         attr_data.get("min_alarm", ""), attr_data.get("max_alarm", ""),
                         attr_data.get("min_warning", ""), attr_data.get("max_warning", ""))
             except JSONDecodeError as e:
-                raise e
+                self.error_stream("Failed to parse init_dynamic_attributes JSON: " + str(e))
 
-        self.set_state(DevState.ON)
+        if self.get_state() != DevState.FAULT:
+            self.set_state(DevState.ON)
 
 if __name__ == "__main__":
     deviceServerName = os.getenv("DEVICE_SERVER_NAME", "Canopen")
