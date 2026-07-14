@@ -47,7 +47,7 @@ class Canopen(Device, metaclass=DeviceMeta):
         attr.set_default_properties(prop)
         self.add_attribute(attr, r_meth=self.read_dynamic_attr, w_meth=self.write_dynamic_attr)
         self.dynamic_attribute_indices[name] = index
-        self.info_stream(f"Added dynamic attribute {index} {name}")
+        self.info_stream("Added dynamic attribute %s %s", index, name)
 
     def stringValueToVarType(self, variable_type_name) -> CmdArgType:
         return {
@@ -69,14 +69,14 @@ class Canopen(Device, metaclass=DeviceMeta):
     def read_dynamic_attr(self, attr):
         name = attr.get_name()
         value = self.sdo(name).raw
-        self.debug_stream(f"Read value {name}: {value}")
+        self.debug_stream("Read value %s: %s", name, value)
         attr.set_value(value)
 
     def write_dynamic_attr(self, attr):
         name = attr.get_name()
         value = attr.get_write_value()        
         self.sdo(name).raw = value
-        self.debug_stream(f"Write value {name}: {value}")
+        self.debug_stream("Write value %s: %s", name, value)
 
     def sdo(self, name):
         indexName = self.dynamic_attribute_indices[name]
@@ -109,19 +109,19 @@ class Canopen(Device, metaclass=DeviceMeta):
             self.network.connect(channel=self.network_channel, interface=self.network_interface,
                 bitrate=self.network_bitrate)
         except Exception as e:
-            self.error_stream("Failed to connect: " + str(e))
+            self.error_stream("Failed to connect: %s", str(e))
             self.set_state(DevState.FAULT)
-        self.info_stream(f"Adding node {self.node_id} with EDS {self.eds_file}")
+        self.info_stream("Adding node %s with EDS %s", self.node_id, self.eds_file)
         temp_eds_file = tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.eds')
         temp_eds_file.write(self.eds_file)
         temp_eds_file.close()
-        self.info_stream(f"EDS content written to temporary file: {temp_eds_file.name}")
+        self.debug_stream("EDS content written to temporary file: %s", temp_eds_file.name)
         self.node = canopen.RemoteNode(int(self.node_id), temp_eds_file.name)
         # self.node = canopen.RemoteNode(self.node_id, self.eds_file) not allowed to load directly
         self.network.add_node(self.node)
         for entry in self.node.object_dictionary:
             obj = self.node.object_dictionary[entry]
-            self.info_stream(f"Object Index: {entry}, Name: {obj.name}")
+            self.debug_stream("Object Index: %s, Name: %s", entry, obj.name)
 
         os.remove(temp_eds_file.name)
         if self.init_dynamic_attributes:
@@ -134,7 +134,7 @@ class Canopen(Device, metaclass=DeviceMeta):
                         attr_data.get("min_alarm", ""), attr_data.get("max_alarm", ""),
                         attr_data.get("min_warning", ""), attr_data.get("max_warning", ""))
             except JSONDecodeError as e:
-                self.error_stream("Failed to parse init_dynamic_attributes JSON: " + str(e))
+                self.error_stream("Failed to parse init_dynamic_attributes JSON: %s", str(e))
 
         if self.get_state() != DevState.FAULT:
             self.set_state(DevState.ON)

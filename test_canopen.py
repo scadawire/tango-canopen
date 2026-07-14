@@ -85,10 +85,12 @@ class State:
         self.node = MockNode()
         self.dynamic_attribute_indices = {}
 
-    def info_stream(self, msg): pass
-    def debug_stream(self, msg): pass
-    def warn_stream(self, msg): pass
-    def error_stream(self, msg): pass
+    # mirror pytango: the message is rendered as `msg % args`, so a format
+    # mismatch (a stray % in the payload) raises here just as it would live
+    def info_stream(self, msg, *args): msg % args
+    def debug_stream(self, msg, *args): msg % args
+    def warn_stream(self, msg, *args): msg % args
+    def error_stream(self, msg, *args): msg % args
 
     def add_attribute(self, attr, r_meth=None, w_meth=None):
         pass
