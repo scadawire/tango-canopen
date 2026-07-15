@@ -46,6 +46,7 @@ class Canopen(Device, metaclass=DeviceMeta):
         attr = Attr(name, variableType, writeType)
         attr.set_default_properties(prop)
         self.add_attribute(attr, r_meth=self.read_dynamic_attr, w_meth=self.write_dynamic_attr)
+        self.set_change_event(name, True, False)
         self.dynamic_attribute_indices[name] = index
         self.info_stream("Added dynamic attribute %s %s", index, name)
 
@@ -77,6 +78,7 @@ class Canopen(Device, metaclass=DeviceMeta):
         value = attr.get_write_value()        
         self.sdo(name).raw = value
         self.debug_stream("Write value %s: %s", name, value)
+        self.push_change_event(name, value)
 
     def sdo(self, name):
         indexName = self.dynamic_attribute_indices[name]
