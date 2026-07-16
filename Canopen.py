@@ -7,11 +7,17 @@ import json
 from json import JSONDecodeError
 import tempfile
 import canopen
+from threading import Thread, Lock, Event
 
 class Canopen(Device, metaclass=DeviceMeta):
     network = None
     node = None
     dynamic_attribute_indices = {}
+    # sdo transfers are request/response over the shared bus, so the health monitor and the tango
+    # request threads must not run one at the same time or their responses would interleave
+    client_lock = Lock()
+    _health_thread = None
+    _health_stop = None
 
     network_channel = device_property(dtype=str, default_value="can0")
     network_interface = device_property(dtype=str, default_value="socketcan")
@@ -19,6 +25,7 @@ class Canopen(Device, metaclass=DeviceMeta):
     eds_file = device_property(dtype=str, default_value="")
     node_id = device_property(dtype=int, default_value=1)
     init_dynamic_attributes = device_property(dtype=str, default_value="")
+    health_check_interval = device_property(dtype=float, default_value=2.0)
 
     @attribute
     def time(self):
@@ -69,14 +76,16 @@ class Canopen(Device, metaclass=DeviceMeta):
 
     def read_dynamic_attr(self, attr):
         name = attr.get_name()
-        value = self.sdo(name).raw
+        with self.client_lock:
+            value = self.sdo(name).raw
         self.debug_stream("Read value %s: %s", name, value)
         attr.set_value(value)
 
     def write_dynamic_attr(self, attr):
         name = attr.get_name()
-        value = attr.get_write_value()        
-        self.sdo(name).raw = value
+        value = attr.get_write_value()
+        with self.client_lock:
+            self.sdo(name).raw = value
         self.debug_stream("Write value %s: %s", name, value)
         self.push_change_event(name, value)
 
@@ -94,7 +103,45 @@ class Canopen(Device, metaclass=DeviceMeta):
             return self.node.sdo[int(indexName)]
         return self.node.sdo[indexName] # named sdo
 
+    # canopen surfaces a lost node only as an sdo timeout: on socketcan the bus interface stays up
+    # regardless of any node, there is no connection object that drops, and the node is not assumed
+    # to be a heartbeat producer (the general case, and our counterpart is not one), so heartbeat /
+    # node-guarding monitoring is not available. The node is therefore watched actively with a real
+    # sdo read - a last resort, only because the library gives no signal of its own. Nothing has to
+    # be reopened on recovery: as soon as the node answers its sdo again the driver returns to ON.
+    def health_probe(self):
+        if self.node is None or not self.dynamic_attribute_indices:
+            return
+        anyName = next(iter(self.dynamic_attribute_indices))
+        with self.client_lock:
+            self.sdo(anyName).raw
+
+    def health_loop(self):
+        wasHealthy = True
+        while not self._health_stop.is_set():
+            self._health_stop.wait(self.health_check_interval)
+            if self._health_stop.is_set():
+                break
+            try:
+                self.health_probe()
+                if not wasHealthy:
+                    self.info_stream("connection to the node recovered")
+                    self.set_state(DevState.ON)
+                    wasHealthy = True
+            except Exception as e:
+                if wasHealthy:
+                    self.warn_stream("lost connection to the node: %s", str(e))
+                    self.set_state(DevState.FAULT)
+                    wasHealthy = False
+
+    def start_health_monitor(self):
+        self._health_stop = Event()
+        self._health_thread = Thread(target=self.health_loop, daemon=True)
+        self._health_thread.start()
+
     def delete_device(self):
+        if self._health_stop is not None:
+            self._health_stop.set()
         if self.network is not None:
             try:
                 self.network.disconnect()
@@ -140,6 +187,7 @@ class Canopen(Device, metaclass=DeviceMeta):
 
         if self.get_state() != DevState.FAULT:
             self.set_state(DevState.ON)
+        self.start_health_monitor()
 
 if __name__ == "__main__":
     deviceServerName = os.getenv("DEVICE_SERVER_NAME", "Canopen")
