@@ -17,6 +17,7 @@ Usage:
 
 import struct
 import sys
+import threading
 
 import canopen
 import canopen.objectdictionary as od_mod
@@ -84,6 +85,11 @@ class State:
         self.network = None
         self.node = MockNode()
         self.dynamic_attribute_indices = {}
+        # the driver serialises its sdo access on this, so the stub has to carry a real one
+        self.client_lock = threading.Lock()
+        # the health monitor thread state, so a suite can call the probe without one running
+        self._health_thread = None
+        self._health_stop = threading.Event()
 
     # mirror pytango: the message is rendered as `msg % args`, so a format
     # mismatch (a stray % in the payload) raises here just as it would live
@@ -255,11 +261,14 @@ def test_string_value_to_write_type():
         ("READ", AttrWriteType.READ),
         ("WRITE", AttrWriteType.WRITE),
         ("READ_WRITE", AttrWriteType.READ_WRITE),
-        ("READ_WITH_WRITE", AttrWriteType.READ_WITH_WRITE),
     ]:
         got = Canopen.stringValueToWriteType(s, name)
         assert_equal(f"writeType '{name}'", got, expected)
 
+    # not offered: tango needs an associated write attribute for it, which no driver defines, so it
+    # lands on the same fallback as anything else unknown rather than being mapped through
+    assert_equal("writeType READ_WITH_WRITE falls back",
+                 Canopen.stringValueToWriteType(s, "READ_WITH_WRITE"), AttrWriteType.READ_WRITE)
     assert_equal("writeType '' default", Canopen.stringValueToWriteType(s, ""), AttrWriteType.READ_WRITE)
     assert_equal("writeType unknown default", Canopen.stringValueToWriteType(s, "BOGUS"), AttrWriteType.READ_WRITE)
 

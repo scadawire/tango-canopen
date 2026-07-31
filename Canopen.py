@@ -67,11 +67,14 @@ class Canopen(Device, metaclass=DeviceMeta):
         }.get(variable_type_name, CmdArgType.DevString)
 
     def stringValueToWriteType(self, write_type_name) -> AttrWriteType:
+        # READ_WITH_WRITE is not offered: tango only accepts it for an attribute that names an
+        # associated write attribute, which no driver here defines. Building the Attr anyway does
+        # not fail just that attribute, it aborts init_device with "Associated attribute not
+        # defined" and takes the whole device server down.
         return {
             "READ": AttrWriteType.READ,
             "WRITE": AttrWriteType.WRITE,
             "READ_WRITE": AttrWriteType.READ_WRITE,
-            "READ_WITH_WRITE": AttrWriteType.READ_WITH_WRITE,
         }.get(write_type_name, AttrWriteType.READ_WRITE)
 
     def read_dynamic_attr(self, attr):
