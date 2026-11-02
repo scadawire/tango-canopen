@@ -3,6 +3,8 @@ from tango import AttrQuality, AttrWriteType, DevState, Attr, CmdArgType, UserDe
 from tango.server import Device, attribute, command, DeviceMeta
 from tango.server import class_property, device_property, run
 import os
+import sys
+import struct
 import json
 from json import JSONDecodeError
 import tempfile
@@ -192,6 +194,104 @@ class Canopen(Device, metaclass=DeviceMeta):
             self.set_state(DevState.ON)
         self.start_health_monitor()
 
+# device scan
+# "Canopen --scan '<json>'" looks for nodes instead of running the device server, so scadawire can offer
+# what it finds as devices to create. It prints one line, SCAN_RESULT_MARKER followed by
+# {"devices": [{"name", "properties", "details", "issues", "notes"}], "error"}: "properties" are named
+# like this driver's device properties, so a found node is configured by copying them over. "issues" are
+# what speaks against using a found node, "notes" what has to be done before it works.
+SCAN_RESULT_MARKER = "SCADAWIRE_SCAN_RESULT "
+
+
+def _sdo_read(node, index, subindex, decode):
+    try:
+        return decode(node.sdo.upload(index, subindex))
+    except Exception:
+        # an object the node does not implement answers with an sdo abort, 0x1008 and the serial
+        # number of 0x1018 are optional
+        return None
+
+
+def _u32(data):
+    return "0x%08x" % struct.unpack("<I", data[:4].ljust(4, b"\x00"))[0]
+
+
+def scan(config, network=None):
+    """Asks every node id for its device type (object 0x1000) and reads the identity of each answer.
+
+    canopen's NodeScanner counts any answer as a present node - an sdo abort as much as a heartbeat or
+    a pdo that arrives meanwhile -, so a node lacking 0x1000 is still found. The identity object 0x1018
+    is mandatory, 0x1008 the optional device name. The eds file cannot be read from a node, vendor id
+    and product code are what tell which one it needs.
+    It adds sdo traffic to the bus, which an sdo client already running on the same bus could mistake
+    for answers of its own, so the bus should not be in use by a running device while it scans.
+    """
+    channel = str(config.get("network_channel") or "can0")
+    interface = str(config.get("network_interface") or "socketcan")
+    bitrate = int(config.get("network_bitrate") or 0)
+    timeout = float(config.get("timeout") or 1.0)
+    ownNetwork = network is None
+    if ownNetwork:
+        network = canopen.Network()
+        kwargs = {"channel": channel, "interface": interface}
+        if bitrate > 0:
+            kwargs["bitrate"] = bitrate
+        network.connect(**kwargs)
+    try:
+        network.scanner.reset()
+        network.scanner.search()
+        time.sleep(timeout)
+        devices = []
+        for nodeId in sorted(network.scanner.nodes):
+            node = canopen.RemoteNode(nodeId, canopen.ObjectDictionary())
+            network.add_node(node)
+            try:
+                deviceName = _sdo_read(node, 0x1008, 0, lambda d: d.rstrip(b"\x00").decode("latin-1").strip())
+                details = {
+                    "node_id": nodeId,
+                    "device_type": _sdo_read(node, 0x1000, 0, _u32),
+                    "vendor_id": _sdo_read(node, 0x1018, 1, _u32),
+                    "product_code": _sdo_read(node, 0x1018, 2, _u32),
+                    "revision": _sdo_read(node, 0x1018, 3, _u32),
+                    "serial_number": _sdo_read(node, 0x1018, 4, _u32),
+                    "device_name": deviceName or "",
+                }
+            finally:
+                del network[nodeId]
+            issues = []
+            if details["vendor_id"] is None:
+                issues.append("did not answer the identity object 0x1018")
+            devices.append({
+                "name": "CANopen node %d%s on %s" % (nodeId, " (" + deviceName + ")" if deviceName else "", channel),
+                "properties": {
+                    "network_channel": channel,
+                    "network_interface": interface,
+                    "network_bitrate": bitrate,
+                    "node_id": nodeId,
+                },
+                "details": details,
+                "issues": issues,
+                # not an issue, every canopen node needs one, but nothing works until it is given
+                "notes": ["needs its eds file, the vendor id and product code tell which one"],
+            })
+        return {"devices": devices}
+    finally:
+        if ownNetwork:
+            network.disconnect()
+
+
+def scan_main(argv):
+    try:
+        config = json.loads(argv[argv.index("--scan") + 1]) if len(argv) > argv.index("--scan") + 1 else {}
+        result = scan(config)
+    except Exception as e:
+        result = {"devices": [], "error": "%s: %s" % (type(e).__name__, e)}
+    print(SCAN_RESULT_MARKER + json.dumps(result), flush=True)
+    return 1 if result.get("error") else 0
+
+
 if __name__ == "__main__":
+    if "--scan" in sys.argv:
+        sys.exit(scan_main(sys.argv))
     deviceServerName = os.getenv("DEVICE_SERVER_NAME", "Canopen")
     run({deviceServerName: Canopen})

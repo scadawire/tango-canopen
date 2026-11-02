@@ -922,6 +922,113 @@ def test_fix_set_on_checks_fault():
 #  Main
 # ===========================================================================
 
+
+# ===========================================================================
+#  Device scan (virtual CAN bus)
+# ===========================================================================
+
+def build_identity_dictionary(device_type=None, vendor_id=None, product_code=None, revision=None,
+        serial_number=None, device_name=None):
+    """An object dictionary carrying only the objects a scan reads, each one only when given."""
+    dictionary = canopen.ObjectDictionary()
+    if device_type is not None:
+        v = od_mod.ODVariable("DeviceType", 0x1000)
+        v.data_type = datatypes.UNSIGNED32
+        v.default = device_type
+        dictionary.add_object(v)
+    if device_name is not None:
+        v = od_mod.ODVariable("DeviceName", 0x1008)
+        v.data_type = datatypes.VISIBLE_STRING
+        v.default = device_name
+        dictionary.add_object(v)
+    if vendor_id is not None:
+        rec = od_mod.ODRecord("Identity", 0x1018)
+        sub0 = od_mod.ODVariable("NumberOfEntries", 0x1018, 0)
+        sub0.data_type = datatypes.UNSIGNED8
+        sub0.default = 4 if serial_number is not None else 3
+        rec.add_member(sub0)
+        for sub, name, value in [(1, "VendorId", vendor_id), (2, "ProductCode", product_code),
+                (3, "Revision", revision), (4, "SerialNumber", serial_number)]:
+            if value is None:
+                continue
+            var = od_mod.ODVariable(name, 0x1018, sub)
+            var.data_type = datatypes.UNSIGNED32
+            var.default = value
+            rec.add_member(var)
+        dictionary.add_object(rec)
+    return dictionary
+
+
+def test_scan_finds_nodes():
+    """Nodes on a virtual bus are found through the real sdo search and identified."""
+    print("\n-- scan --")
+    bus = canopen.Network()
+    bus.connect(channel="test_canopen_scan", interface="virtual")
+    try:
+        bus.create_node(5, build_identity_dictionary(0x00020192, 0x000000AB, 0x00001234, 0x00010002, 0x0BADBEEF, "Drive A"))
+        bus.create_node(12, build_identity_dictionary(0x00000191, 0x000000AB, 0x00005678, 1))
+        # answers every sdo with an abort, which still tells that the node is there
+        bus.create_node(20, build_identity_dictionary())
+        result = __import__("Canopen").scan({
+            "network_channel": "test_canopen_scan", "network_interface": "virtual", "timeout": 0.3,
+        })
+    finally:
+        bus.disconnect()
+    devices = result["devices"]
+    assert_equal("scan: every answering node is found", [d["details"]["node_id"] for d in devices], [5, 12, 20])
+    first = devices[0]
+    assert_equal("scan: properties of a found node", first["properties"], {
+        "network_channel": "test_canopen_scan", "network_interface": "virtual", "network_bitrate": 0, "node_id": 5,
+    })
+    assert_equal("scan: device type", first["details"]["device_type"], "0x00020192")
+    assert_equal("scan: vendor id", first["details"]["vendor_id"], "0x000000ab")
+    assert_equal("scan: product code", first["details"]["product_code"], "0x00001234")
+    assert_equal("scan: revision", first["details"]["revision"], "0x00010002")
+    assert_equal("scan: serial number", first["details"]["serial_number"], "0x0badbeef")
+    assert_equal("scan: device name", first["details"]["device_name"], "Drive A")
+    assert_equal("scan: name carries node id and device name", first["name"], "CANopen node 5 (Drive A) on test_canopen_scan")
+    assert_equal("scan: identified node has no issues", first["issues"], [])
+    assert_equal("scan: the eds is a note", len(first["notes"]), 1)
+    assert_equal("scan: optional name and serial left out", (devices[1]["details"]["device_name"], devices[1]["details"]["serial_number"]), ("", None))
+    assert_equal("scan: node without identity is reported", len(devices[2]["issues"]), 1)
+    assert_equal("scan: node without identity has no vendor", devices[2]["details"]["vendor_id"], None)
+
+
+def test_scan_empty_bus():
+    result = __import__("Canopen").scan({
+        "network_channel": "test_canopen_scan_empty", "network_interface": "virtual", "timeout": 0.1,
+    })
+    assert_equal("scan: empty bus finds nothing", result["devices"], [])
+
+
+def test_scan_main():
+    import io
+    import json as _json
+    import contextlib
+    module = __import__("Canopen")
+    original = module.scan
+    try:
+        module.scan = lambda config: {"devices": [{"name": config["network_channel"]}]}
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = module.scan_main(["Canopen", "--scan", '{"network_channel": "can1"}'])
+        lines = [l for l in out.getvalue().splitlines() if l.startswith(module.SCAN_RESULT_MARKER)]
+        assert_equal("scan main: exit code", code, 0)
+        assert_equal("scan main: result", _json.loads(lines[0][len(module.SCAN_RESULT_MARKER):]), {"devices": [{"name": "can1"}]})
+
+        def down(config):
+            raise OSError("can1 is down")
+        module.scan = down
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = module.scan_main(["Canopen", "--scan", "{}"])
+        result = _json.loads(out.getvalue().strip()[len(module.SCAN_RESULT_MARKER):])
+        assert_equal("scan main: failure exit code", code, 1)
+        assert_equal("scan main: failure is reported, not raised", result["error"], "OSError: can1 is down")
+    finally:
+        module.scan = original
+
+
 def main():
     global passed, failed
 
@@ -975,6 +1082,11 @@ def main():
     test_fix_delete_device()
     test_fix_connect_error_handling()
     test_fix_set_on_checks_fault()
+
+    # -- device scan --
+    test_scan_finds_nodes()
+    test_scan_empty_bus()
+    test_scan_main()
 
     # -- summary --
     total = passed + failed
